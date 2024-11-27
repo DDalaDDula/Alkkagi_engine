@@ -1,12 +1,80 @@
 import sys
-from math import copysign, inf
-
+import random
+import traceback
 import pygame
+from pygame.locals import *
+from math import cos, sin, sqrt, radians, copysign, inf
 
-from vectors import Vector2D
+class Vector2D:
+    def __init__(self, *args):
+        if args.__len__() == 2:
+            self.x, self.y = args[0], args[1]
+        elif args.__len__() == 1:
+            self.x, self.y = args[0]
+        else:
+            self.x, self.y = 0.0, 0.0
 
+    def __add__(self, other):
+        if len(other) == len(self):
+            return self.__class__(*(a + b for a, b in zip(self, other)))
+        else:
+            raise TypeError
 
-# from https://stackoverflow.com/a/20677983
+    def __sub__(self, other):
+        if len(other) == len(self):
+            return self.__class__(*(a - b for a, b in zip(self, other)))
+        else:
+            raise TypeError
+
+    def __mul__(self, other):
+        if isinstance(other, int) or isinstance(other, float):
+            return self.__class__(self.x * other, self.y * other)
+        else:
+            raise TypeError
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        if isinstance(other, int) or isinstance(other, float):
+            return self.__class__(self.x / other, self.y / other)
+        else:
+            raise TypeError
+
+    def __neg__(self):
+        return self.__class__(-self.x, -self.y)
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, key):
+        return (self.x, self.y)[key]
+
+    def __repr__(self):
+        return "{} ({}, {})".format(self.__class__.__name__, self.x, self.y)
+
+    def length(self):
+        return sqrt(self.x ** 2 + self.y ** 2)
+
+    def normalize(self):
+        length = self.length()
+        return self.__class__(self.x / length, self.y / length)
+
+    def rotate(self, theta):
+        theta = radians(theta)
+        dc, ds = cos(theta), sin(theta)
+        x, y = dc * self.x - ds * self.y, ds * self.x + dc * self.y
+        return self.__class__(x, y)
+
+    def dot(self, other):
+        return self.x * other.x + self.y * other.y
+
+    def cross(self, other):
+        return self.x * other.y - self.y * other.x
+
+    def orthogonal(self):
+        return self.__class__(self.x, -self.y)
+
 def line_intersection(line1, line2):
     xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
     ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
@@ -39,7 +107,7 @@ class RigidBody:
         if mass is None:
             mass = width * height
         self.mass = mass
-        self.restitution = restitution # 물체의 반발 계수
+        self.restitution = restitution
         self.inertia = mass * (width ** 2 + height ** 2) / 12
 
         self.sprite = pygame.Surface((width, height))
@@ -153,9 +221,9 @@ class RigidBody:
 
 
 class PhysicsWorld:
-    def __init__(self, screen_size):
+    def __init__(self):
         self.bodies = []
-        self.screen_width, self.screen_height = screen_size
+
     def add(self, *bodies):
         self.bodies += bodies
         for body in bodies:
@@ -167,30 +235,7 @@ class PhysicsWorld:
 
     def update(self, dt):
         tested = []
-
         for body in self.bodies:
-            body.update(dt)
-
-            half_width = body.width / 2
-            half_height = body.height / 2
-
-            wall_restitution = 0.4  # 0.8: 에너지 손실 60%
-
-            if body.position.x - half_width < 0:
-                body.position.x = half_width
-                body.velocity.x *= -wall_restitution
-
-            elif body.position.x + half_width > self.screen_width:
-                body.position.x = self.screen_width - half_width
-                body.velocity.x *= -wall_restitution
-
-            if body.position.y - half_height < 0:
-                body.position.y = half_height
-                body.velocity.y *= -wall_restitution
-
-            elif body.position.y + half_height > self.screen_height:
-                body.position.y = self.screen_height - half_height
-                body.velocity.y *= -wall_restitution
 
             for other_body in self.bodies:
                 if other_body not in tested and other_body is not body:
@@ -210,9 +255,13 @@ class PhysicsWorld:
                             body.position += normal * depth * copysign(1, magnitude)
                         if other_body.mass != inf:
                             other_body.position -= normal * depth * copysign(1, magnitude)
+                        
+                        friction_coefficient = 0.5  # 마찰 계수
+                        tangent = normal.orthogonal() # 기존 충격량 계산에 마찰력 추가
+                        friction_impulse = -(rel_vel.dot(tangent)) * friction_coefficient / (1 / body.mass + 1 / other_body.mass)
 
-                        body.velocity = body.velocity + j / body.mass * normal
-                        other_body.velocity = other_body.velocity - j / other_body.mass * normal
+                        body.velocity += (normal * j + tangent * friction_impulse) / body.mass
+                        other_body.velocity -= (normal * j + tangent * friction_impulse) / other_body.mass
 
                         body_collision_edge = body.get_collision_edge(-direction)
                         other_body_collision_edge = other_body.get_collision_edge(direction)
@@ -228,3 +277,79 @@ class PhysicsWorld:
 
             tested.append(body)
             body.update(dt)
+
+pygame.display.init()
+pygame.font.init()
+pygame.display.set_caption("Simple physics example")
+default_font = pygame.font.Font(None, 24)
+screen_size = (1280, 768)
+game_surface = pygame.display.set_mode(screen_size)
+clock = pygame.time.Clock()
+
+world = PhysicsWorld()
+world.add(
+    RigidBody(100, 100, 100, 100, mass=inf),
+    RigidBody(100, 100, screen_size[0] - 100, 100, mass=inf),
+    RigidBody(100, 100, screen_size[0] - 100, screen_size[1] - 100, mass=inf),
+    RigidBody(100, 100, 100, screen_size[1] - 100, mass=inf),
+)
+screen_center = Vector2D(screen_size) / 2
+mouse_pos = screen_center
+
+
+def get_input():
+    mouse_buttons = pygame.mouse.get_pressed()
+    global mouse_pos
+    mouse_pos = pygame.mouse.get_pos()
+
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            return False
+        elif event.type == KEYDOWN:
+            if event.key == K_ESCAPE:
+                return False
+        elif event.type == pygame.MOUSEBUTTONUP and mouse_buttons[0]:
+            body = RigidBody(
+                50, 50,
+                screen_center.x, screen_center.y,
+                angle=random.randint(0, 90)
+            )
+            world.add(body)
+            body.velocity = Vector2D(mouse_pos) - screen_center
+    return True
+
+
+def draw():
+    game_surface.fill((40, 40, 40))
+
+    for body in world.bodies:
+        body.draw(game_surface)
+    pygame.draw.line(game_surface, (0, 255, 0), screen_center, mouse_pos, 2)
+
+    game_surface.blit(default_font.render('Objects: {}'.format(len(world.bodies)), True, (255, 255, 255)), (0, 0))
+    game_surface.blit(default_font.render('FPS: {0:.0f}'.format(clock.get_fps()), True, (255, 255, 255)), (0, 24))
+    pygame.display.update()
+
+
+def main():
+    dt = 1 / 60
+    while True:
+        if not get_input():
+            break
+        world.update(dt)
+        for body in world.bodies:
+            if body.position.x < 0 or body.position.x > screen_size[0] or \
+                    body.position.y < 0 or body.position.y > screen_size[1]:
+                world.remove(body)
+        draw()
+        clock.tick(60)
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        pygame.quit()
+        input()

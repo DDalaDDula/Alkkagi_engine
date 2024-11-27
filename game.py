@@ -10,19 +10,13 @@ from physics import PhysicsWorld, RigidBody
 
 pygame.display.init()
 pygame.font.init()
-pygame.display.set_caption("Simple physics example")
+pygame.display.set_caption("physics engine")
 default_font = pygame.font.Font(None, 24)
 screen_size = (1280, 768)
 game_surface = pygame.display.set_mode(screen_size)
 clock = pygame.time.Clock()
 
-world = PhysicsWorld()
-world.add(
-    RigidBody(100, 100, 100, 100, mass=inf),
-    RigidBody(100, 100, screen_size[0] - 100, 100, mass=inf),
-    RigidBody(100, 100, screen_size[0] - 100, screen_size[1] - 100, mass=inf),
-    RigidBody(100, 100, 100, screen_size[1] - 100, mass=inf),
-)
+world = PhysicsWorld(screen_size)
 screen_center = Vector2D(screen_size) / 2
 mouse_pos = screen_center
 
@@ -67,10 +61,6 @@ def main():
         if not get_input():
             break
         world.update(dt)
-        for body in world.bodies:
-            if body.position.x < 0 or body.position.x > screen_size[0] or \
-                    body.position.y < 0 or body.position.y > screen_size[1]:
-                world.remove(body)
         draw()
         clock.tick(60)
     pygame.quit()
