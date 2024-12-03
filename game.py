@@ -10,7 +10,7 @@ pygame.display.init()
 pygame.font.init()
 pygame.display.set_caption("physics engine")
 default_font = pygame.font.Font(None, 24)
-screen_size = (1280, 768)
+screen_size = (900, 900)
 game_surface = pygame.display.set_mode(screen_size)
 clock = pygame.time.Clock()
 
@@ -21,6 +21,13 @@ mouse_pos = Vector2D(screen_size) / 2
 is_dragging = False
 drag_start_pos = None
 mouse_pos = None  # 마우스 현재 위치
+
+background_image = pygame.image.load('./img/Board.png')
+go_black_image = pygame.image.load('./img/Go_Black.png')
+go_white_image = pygame.image.load('./img/Go_White.png')
+green_king_image = pygame.image.load('./img/Green_King.png')
+red_king_image = pygame.image.load('./img/Red_King.png')
+background_image = pygame.transform.scale(background_image, screen_size)
 
 # 물체 형태 상태
 shape_type = "rectangle"  # 초기 형태 - 사각형
@@ -133,7 +140,7 @@ def remove_out_of_bounds_bodies(world, screen_width, screen_height):
 
 
 def draw():
-    game_surface.fill((40, 40, 40))
+    game_surface.blit(background_image, (0, 0))
     draw_button() # 버튼
     draw_preview() # 드래그 미리보기
     # 드래그 선

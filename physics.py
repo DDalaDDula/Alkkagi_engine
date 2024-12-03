@@ -154,6 +154,14 @@ class RigidBody:
         self.angular_velocity += angular_acceleration * dt
         self.angle += self.angular_velocity * dt
 
+        # 속도 임계값 확인 (속도가 작으면 멈춤)
+        velocity_threshold = 12  # 속도 임계값
+        if self.velocity.length() < velocity_threshold:
+            self.velocity = Vector2D(0, 0)  # 속도 0으로 설정
+        # 각속도 임계값 확인 (회전 멈춤)
+        if abs(self.angular_velocity) < velocity_threshold:
+            self.angular_velocity = 0
+
         self.reset()
 
     @property
