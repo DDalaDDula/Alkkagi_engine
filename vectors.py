@@ -1,6 +1,5 @@
 from math import cos, sin, sqrt, radians
 
-
 class Vector2D:
     def __init__(self, *args):
         if args.__len__() == 2:

@@ -1,0 +1,4 @@
+*.spec
+*.pyc
+Executable_File
+build

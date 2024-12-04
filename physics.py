@@ -1,8 +1,6 @@
 import sys
 from math import copysign, inf
-
 import pygame
-
 from vectors import Vector2D
 
 def line_intersection(line1, line2):
@@ -81,12 +79,13 @@ def sat_collision(body1, body2):
     return True, minimum_depth, collision_axis
 
 class RigidBody:
-    def __init__(self, width, height, x, y, angle=0.0, mass=None, restitution=0.5, shape="rectangle"):
+    def __init__(self, width, height, x, y, angle=0.0, mass=None, restitution=0.3, shape="rectangle", color=(0, 0, 0)):
         self.position = Vector2D(x, y)
         self.width = width
         self.height = height
         self.angle = angle
         self.shape = shape
+        self.color = color
         self.velocity = Vector2D(0.0, 0.0)
         self.angular_velocity = 0.0
 
@@ -105,23 +104,24 @@ class RigidBody:
 
     def draw(self, surface):
         if self.shape == "circle":
-            pygame.draw.circle(surface, (255, 255, 255), (int(self.position.x), int(self.position.y)), self.width // 2, 2)
+            pygame.draw.circle(surface, self.color, (int(self.position.x), int(self.position.y)), self.width // 2, 100)
         elif self.shape == "triangle":
             # 삼각형 꼭짓점 계산
             half_width = self.width / 2
             half_height = self.height / 2
             points = [
-                (0, -half_height),  # 위쪽 꼭짓점
-                (-half_width, half_height),  # 왼쪽 아래 꼭짓점
-                (half_width, half_height),  # 오른쪽 아래 꼭짓점
+                (0, -half_height),
+                (-half_width, half_height),
+                (half_width, half_height),
             ]
-            # 꼭짓점을 회전 및 이동
             rotated_points = [Vector2D(p).rotate(-self.angle) + self.position for p in points]
-            pygame.draw.polygon(surface, (255, 255, 255), [(p.x, p.y) for p in rotated_points], 2)
-        else:
-            rotated = pygame.transform.rotate(self.sprite, self.angle)
-            rect = rotated.get_rect()
-            surface.blit(rotated, self.position - (rect.width / 2, rect.height / 2))
+            pygame.draw.polygon(surface, self.color, [(p.x, p.y) for p in rotated_points])
+        elif self.shape == "rectangle":
+            rect = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            rect.fill(self.color)  # 전체를 검정색으로 채움
+            rotated_rect = pygame.transform.rotate(rect, self.angle)
+            rect_pos = (self.position.x - rotated_rect.get_width() // 2, self.position.y - rotated_rect.get_height() // 2)
+            surface.blit(rotated_rect, rect_pos)
 
     def add_world_force(self, force, offset):
 
@@ -142,8 +142,8 @@ class RigidBody:
         self.torque = 0.0
 
     def update(self, dt):
-        self.apply_friction(friction_coefficient=75) # 마찰계수
-        rotational_drag_coefficient = 0.5 # 회전저항
+        self.apply_friction(friction_coefficient=100) # 마찰계수
+        rotational_drag_coefficient = 1 # 회전저항
         self.angular_velocity *= (1 - rotational_drag_coefficient * dt)
 
         acceleration = self.forces / self.mass
@@ -152,14 +152,21 @@ class RigidBody:
 
         angular_acceleration = self.torque / self.inertia
         self.angular_velocity += angular_acceleration * dt
+
+        # 최대 각속도 제한
+        max_angular_velocity = 200.0  # 최대 회전 속도 (라디안/초)
+        if abs(self.angular_velocity) > max_angular_velocity:
+            self.angular_velocity = copysign(max_angular_velocity, self.angular_velocity)
+
         self.angle += self.angular_velocity * dt
 
         # 속도 임계값 확인 (속도가 작으면 멈춤)
         velocity_threshold = 12  # 속도 임계값
+        angular_velocity_threshold = 0.1  # 회전 속도 임계값
         if self.velocity.length() < velocity_threshold:
             self.velocity = Vector2D(0, 0)  # 속도 0으로 설정
         # 각속도 임계값 확인 (회전 멈춤)
-        if abs(self.angular_velocity) < velocity_threshold:
+        if abs(self.angular_velocity) < angular_velocity_threshold:
             self.angular_velocity = 0
 
         self.reset()
@@ -249,7 +256,25 @@ class RigidBody:
             return (right_vertex, support_point)
         else:
             return (support_point, left_vertex)
+        
+    # 물체의 경계 박스 (AABB) 계산
+    def get_bounding_box(self):
+        if self.shape == "circle":
+            return (
+                self.position.x - self.width / 2,
+                self.position.y - self.width / 2,
+                self.position.x + self.width / 2,
+                self.position.y + self.width / 2,
+            )
+        elif self.shape in ["rectangle", "triangle"]:
+            vertices = self.vertices
+            min_x = min(v.x for v in vertices)
+            max_x = max(v.x for v in vertices)
+            min_y = min(v.y for v in vertices)
+            max_y = max(v.y for v in vertices)
+            return (min_x, min_y, max_x, max_y)
 
+        return (self.position.x, self.position.y, self.position.x, self.position.y)
 
 class PhysicsWorld:
     def __init__(self):
@@ -264,6 +289,38 @@ class PhysicsWorld:
         self.bodies.remove(body)
         print("Body removed", id(body))
 
+    # 생성하려는 위치에 물체가 있는지 확인(AABB)
+    def is_position_occupied(self, position, shape, width, height):
+        temp_body = RigidBody(width, height, position.x, position.y, shape=shape)
+        new_box = temp_body.get_bounding_box()
+
+        for body in self.bodies:
+            existing_box = body.get_bounding_box()
+            if (
+                new_box[0] < existing_box[2] and  # new 왼쪽 < existing 오른쪽
+                new_box[2] > existing_box[0] and  # new 오른쪽 > existing 왼쪽
+                new_box[1] < existing_box[3] and  # new 위쪽 < existing 아래쪽
+                new_box[3] > existing_box[1]      # new 아래쪽 > existing 위쪽
+            ):
+                return True
+        return False
+
+    # 주어진 위치에 있는 물체 반환
+    def get_body_at_position(self, position):
+        for body in self.bodies:
+            if body.shape == "circle":
+                distance = (body.position - position).length()
+                if distance <= body.width / 2:
+                    return body  # 원 안에 있음
+            else:  # 사각형 또는 삼각형은 AABB로 확인
+                box = body.get_bounding_box()
+                if (
+                    box[0] <= position.x <= box[2] and
+                    box[1] <= position.y <= box[3]
+                ):
+                    return body # 경계 박스 안에 있음
+        return None
+    
     def update(self, dt):
         tested = []
         for body in self.bodies:
