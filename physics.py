@@ -19,19 +19,18 @@ def line_intersection(line1, line2):
     y = det(d, ydiff) / div
     return Vector2D(x, y)
 
+# 다각형 축에 투영 & 범위 계산
 def project_polygon(vertices, axis):
-    """다각형을 축에 투영하여 최소/최대 범위 반환."""
     projections = [v.dot(axis) for v in vertices]
     return min(projections), max(projections)
 
+# 투영 범위 겹침 확인
 def overlap(range1, range2):
-    """두 범위가 겹치는지 확인."""
     return range1[0] <= range2[1] and range2[0] <= range1[1]
 
+# SAT를 이용한 충돌 감지
 def sat_collision(body1, body2):
-    """SAT를 이용한 충돌 감지. 원의 특수 처리를 포함."""
     axes = []
-    minimum_depth = float('inf')  # 초기 충돌 깊이를 무한대로 설정
     collision_axis = None
 
     # 다각형의 축 (법선 벡터)
@@ -69,12 +68,13 @@ def sat_collision(body1, body2):
         # 투영 범위 겹침 확인
         if not overlap(range1, range2):
             return False, 0, None  # 충돌하지 않으면 깊이와 축 없음
-
-        # 겹침 거리 계산
-        overlap_depth = min(range1[1], range2[1]) - max(range1[0], range2[0])
-        if overlap_depth < minimum_depth:
-            minimum_depth = overlap_depth
-            collision_axis = axis
+        else:
+            # 겹침 거리 계산
+            minimum_depth = float('inf')  # 초기 충돌 깊이를 무한대로 설정
+            overlap_depth = min(range1[1], range2[1]) - max(range1[0], range2[0])
+            if overlap_depth < minimum_depth:
+                minimum_depth = overlap_depth
+                collision_axis = axis
 
     return True, minimum_depth, collision_axis
 
