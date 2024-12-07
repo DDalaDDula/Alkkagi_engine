@@ -143,7 +143,7 @@ class RigidBody:
 
     def update(self, dt):
         self.apply_friction(friction_coefficient=100) # 마찰계수
-        rotational_drag_coefficient = 1 # 회전저항
+        rotational_drag_coefficient = 0.9 # 회전저항
         self.angular_velocity *= (1 - rotational_drag_coefficient * dt)
 
         acceleration = self.forces / self.mass
@@ -152,13 +152,12 @@ class RigidBody:
 
         angular_acceleration = self.torque / self.inertia
         self.angular_velocity += angular_acceleration * dt
+        self.angle += self.angular_velocity * dt
 
         # 최대 각속도 제한
         max_angular_velocity = 200.0  # 최대 회전 속도 (라디안/초)
         if abs(self.angular_velocity) > max_angular_velocity:
             self.angular_velocity = copysign(max_angular_velocity, self.angular_velocity)
-
-        self.angle += self.angular_velocity * dt
 
         # 속도 임계값 확인 (속도가 작으면 멈춤)
         velocity_threshold = 12  # 속도 임계값
@@ -329,11 +328,6 @@ class PhysicsWorld:
                     collision, depth, normal = sat_collision(body, other_body) # SAT 충돌 감지 호출
                     if collision:
                         print(f"Collision detected between {body} and {other_body}")
-                        # 충돌 처리
-                        rel_vel = (body.velocity - other_body.velocity)
-                        j = -(1 + body.restitution) * rel_vel.dot(normal) / normal.dot(
-                            normal * (1 / body.mass + 1 / other_body.mass))
-
                         direction = body.position - other_body.position
                         magnitude = normal.dot(direction)
 
@@ -342,6 +336,11 @@ class PhysicsWorld:
                         if other_body.mass != inf:
                             other_body.position -= normal * depth * copysign(1, magnitude)
 
+                        # 충돌 처리
+                        rel_vel = (body.velocity - other_body.velocity)
+                        j = -(1 + body.restitution) * rel_vel.dot(normal) / normal.dot(
+                            normal * (1 / body.mass + 1 / other_body.mass))
+                        
                         body.velocity = body.velocity + j / body.mass * normal
                         other_body.velocity = other_body.velocity - j / other_body.mass * normal
 

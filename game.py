@@ -103,15 +103,13 @@ def get_input():
             else:
                 is_dragging = True  # 새로운 물체 생성 준비
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if is_dragging and dragging_body:
-                # 기존 물체를 발사
+            if is_dragging and dragging_body: # 기존 물체를 발사
                 drag_end_pos = Vector2D(mouse_pos)
                 direction_vector = drag_start_pos - drag_end_pos
                 dragging_body.velocity = direction_vector * 2.5  # 발사 속도
                 dragging_body = None  # 드래그 상태 초기화
                 is_dragging = False
-            elif is_dragging:
-                # 새로운 물체 생성
+            elif is_dragging: # 새로운 물체 생성
                 is_dragging = False
                 drag_end_pos = Vector2D(mouse_pos)
                 direction_vector = drag_start_pos - drag_end_pos
