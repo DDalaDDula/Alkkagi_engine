@@ -323,36 +323,26 @@ class PhysicsWorld:
     
     def update(self, dt):
         tested = []
-        epsilon = 0.01  # 충돌 깊이 최소 임계값
-        position_correction_ratio = 0.8  # 위치 보정 비율
 
         for body in self.bodies:
             for other_body in self.bodies:
                 if other_body not in tested and other_body is not body:
-                    collision, depth, normal = sat_collision(body, other_body)  # SAT 충돌 감지
-                    if not collision or depth < epsilon:
-                        continue  # 충돌이 없거나 깊이가 작으면 무시
-
+                    collision, depth, normal = sat_collision(body, other_body) # SAT 충돌 감지 호출
+                    if not collision:
+                        continue  # 충돌이 없으면 무시
                     print(f"Collision detected between {body} and {other_body}")
+                    # normal 방향 검증
+                    if normal.dot(body.position - other_body.position) < 0:
+                        normal = -normal  # normal이 잘못된 방향이라면 반전
 
-                    # 충돌 축 보정
-                    if normal.length() < 1e-6:  # 노멀이 너무 작으면 보정
-                        normal = (body.position - other_body.position).normalize()
-
-                    # 위치 보정
-                    position_correction = normal * (depth * position_correction_ratio)
-                    if body.mass != inf:
-                        body.position += position_correction / 2
-                    if other_body.mass != inf:
-                        other_body.position -= position_correction / 2
-
-                    # 상대 속도 및 충격량 계산
+                    # 상대 속도 계산
                     rel_vel = body.velocity - other_body.velocity
                     vel_along_normal = rel_vel.dot(normal)
 
                     if vel_along_normal > 0:
-                        continue  # 물체가 멀어지는 경우 무시
+                        continue  # 이미 멀어지는 경우 무시
 
+                    # 충격량(Impulse) 계산
                     restitution = min(body.restitution, other_body.restitution)  # 반발 계수
                     j = -(1 + restitution) * vel_along_normal
                     j /= (1 / body.mass + 1 / other_body.mass)
@@ -365,13 +355,19 @@ class PhysicsWorld:
                     if other_body.mass != inf:
                         other_body.velocity -= impulse / other_body.mass
 
+                    # 최소 위치 보정 (겹침 해소)
+                    position_correction_ratio = 0.8  # 최소 보정 비율
+                    position_correction = normal * (depth * position_correction_ratio)
+                    if body.mass != inf:
+                        body.position += position_correction / 2
+                    if other_body.mass != inf:
+                        other_body.position -= position_correction / 2
+
                     # 회전 토크 적용
                     contact_point = (body.position + other_body.position) / 2
-
                     r_body = contact_point - body.position
                     r_other_body = contact_point - other_body.position
 
-                    # 토크 계산 및 각속도 업데이트
                     torque_body = r_body.cross(impulse)
                     torque_other = r_other_body.cross(impulse)
 
