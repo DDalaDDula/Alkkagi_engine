@@ -19,18 +19,19 @@ def line_intersection(line1, line2):
     y = det(d, ydiff) / div
     return Vector2D(x, y)
 
-# 다각형 축에 투영 & 범위 계산
 def project_polygon(vertices, axis):
+    """다각형을 축에 투영하여 최소/최대 범위 반환."""
     projections = [v.dot(axis) for v in vertices]
     return min(projections), max(projections)
 
-# 투영 범위 겹침 확인
 def overlap(range1, range2):
+    """두 범위가 겹치는지 확인."""
     return range1[0] <= range2[1] and range2[0] <= range1[1]
 
-# SAT를 이용한 충돌 감지
 def sat_collision(body1, body2):
+    """SAT를 이용한 충돌 감지. 원의 특수 처리를 포함."""
     axes = []
+    minimum_depth = float('inf')  # 초기 충돌 깊이를 무한대로 설정
     collision_axis = None
 
     # 다각형의 축 (법선 벡터)
@@ -68,13 +69,12 @@ def sat_collision(body1, body2):
         # 투영 범위 겹침 확인
         if not overlap(range1, range2):
             return False, 0, None  # 충돌하지 않으면 깊이와 축 없음
-        else:
-            # 겹침 거리 계산
-            minimum_depth = float('inf')  # 초기 충돌 깊이를 무한대로 설정
-            overlap_depth = min(range1[1], range2[1]) - max(range1[0], range2[0])
-            if overlap_depth < minimum_depth:
-                minimum_depth = overlap_depth
-                collision_axis = axis
+
+        # 겹침 거리 계산
+        overlap_depth = min(range1[1], range2[1]) - max(range1[0], range2[0])
+        if overlap_depth < minimum_depth:
+            minimum_depth = overlap_depth
+            collision_axis = axis
 
     return True, minimum_depth, collision_axis
 
@@ -143,7 +143,7 @@ class RigidBody:
 
     def update(self, dt):
         self.apply_friction(friction_coefficient=100) # 마찰계수
-        rotational_drag_coefficient = 0.9 # 회전저항
+        rotational_drag_coefficient = 1 # 회전저항
         self.angular_velocity *= (1 - rotational_drag_coefficient * dt)
 
         acceleration = self.forces / self.mass
@@ -152,12 +152,13 @@ class RigidBody:
 
         angular_acceleration = self.torque / self.inertia
         self.angular_velocity += angular_acceleration * dt
-        self.angle += self.angular_velocity * dt
 
         # 최대 각속도 제한
         max_angular_velocity = 200.0  # 최대 회전 속도 (라디안/초)
         if abs(self.angular_velocity) > max_angular_velocity:
             self.angular_velocity = copysign(max_angular_velocity, self.angular_velocity)
+
+        self.angle += self.angular_velocity * dt
 
         # 속도 임계값 확인 (속도가 작으면 멈춤)
         velocity_threshold = 12  # 속도 임계값
@@ -322,52 +323,62 @@ class PhysicsWorld:
     
     def update(self, dt):
         tested = []
+        epsilon = 0.01  # 충돌 깊이 최소 임계값
+        position_correction_ratio = 0.8  # 위치 보정 비율
+
         for body in self.bodies:
             for other_body in self.bodies:
                 if other_body not in tested and other_body is not body:
-                    collision, depth, normal = sat_collision(body, other_body) # SAT 충돌 감지 호출
-                    if collision:
-                        print(f"Collision detected between {body} and {other_body}")
-                        direction = body.position - other_body.position
-                        magnitude = normal.dot(direction)
+                    collision, depth, normal = sat_collision(body, other_body)  # SAT 충돌 감지
+                    if not collision or depth < epsilon:
+                        continue  # 충돌이 없거나 깊이가 작으면 무시
 
-                        if body.mass != inf:
-                            body.position += normal * depth * copysign(1, magnitude)
-                        if other_body.mass != inf:
-                            other_body.position -= normal * depth * copysign(1, magnitude)
+                    print(f"Collision detected between {body} and {other_body}")
 
-                        # 충돌 처리
-                        rel_vel = (body.velocity - other_body.velocity)
-                        j = -(1 + body.restitution) * rel_vel.dot(normal) / normal.dot(
-                            normal * (1 / body.mass + 1 / other_body.mass))
-                        
-                        body.velocity = body.velocity + j / body.mass * normal
-                        other_body.velocity = other_body.velocity - j / other_body.mass * normal
+                    # 충돌 축 보정
+                    if normal.length() < 1e-6:  # 노멀이 너무 작으면 보정
+                        normal = (body.position - other_body.position).normalize()
 
-                        # 충돌 접점 계산
-                        body_collision_edge = body.get_collision_edge(-direction)
-                        other_body_collision_edge = other_body.get_collision_edge(direction)
-                        # 접촉점 계산
-                        if abs(normal.dot(direction)) < 1e-3:  # 충돌면이 평행한 경우
-                            contact_point = (body.position + other_body.position) / 2  # 중심으로 설정
-                        else:
-                            contact_point = line_intersection(body_collision_edge, other_body_collision_edge)
-                        if contact_point:
-                            # 접점에서의 충격량 계산
-                            impulse = j * normal
-                        
-                            # 접점에서의 토크 계산 및 각속도 업데이트
-                            r_body = (contact_point - body.position)
-                            r_other_body = (contact_point - other_body.position)
+                    # 위치 보정
+                    position_correction = normal * (depth * position_correction_ratio)
+                    if body.mass != inf:
+                        body.position += position_correction / 2
+                    if other_body.mass != inf:
+                        other_body.position -= position_correction / 2
 
-                            if body.mass != inf:
-                                torque_body = -r_body.cross(impulse)
-                                body.angular_velocity += torque_body / body.inertia
-                            if other_body.mass != inf:
-                                torque_other = -r_other_body.cross(impulse)
-                                other_body.angular_velocity -= torque_other / other_body.inertia
+                    # 상대 속도 및 충격량 계산
+                    rel_vel = body.velocity - other_body.velocity
+                    vel_along_normal = rel_vel.dot(normal)
+
+                    if vel_along_normal > 0:
+                        continue  # 물체가 멀어지는 경우 무시
+
+                    restitution = min(body.restitution, other_body.restitution)  # 반발 계수
+                    j = -(1 + restitution) * vel_along_normal
+                    j /= (1 / body.mass + 1 / other_body.mass)
+
+                    impulse = j * normal
+
+                    # 선형 속도 업데이트
+                    if body.mass != inf:
+                        body.velocity += impulse / body.mass
+                    if other_body.mass != inf:
+                        other_body.velocity -= impulse / other_body.mass
+
+                    # 회전 토크 적용
+                    contact_point = (body.position + other_body.position) / 2
+
+                    r_body = contact_point - body.position
+                    r_other_body = contact_point - other_body.position
+
+                    # 토크 계산 및 각속도 업데이트
+                    torque_body = r_body.cross(impulse)
+                    torque_other = r_other_body.cross(impulse)
+
+                    if body.mass != inf:
+                        body.angular_velocity += torque_body / body.inertia
+                    if other_body.mass != inf:
+                        other_body.angular_velocity -= torque_other / other_body.inertia
 
             tested.append(body)
-
-            # 물체 업데이트 (위치, 속도, 각속도 변경 적용)
             body.update(dt)
