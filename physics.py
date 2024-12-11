@@ -327,13 +327,13 @@ class PhysicsWorld:
         for body in self.bodies:
             for other_body in self.bodies:
                 if other_body not in tested and other_body is not body:
-                    collision, depth, normal = sat_collision(body, other_body) # SAT 충돌 감지 호출
+                    collision, depth, normal = sat_collision(body, other_body)
                     if not collision:
-                        continue  # 충돌이 없으면 무시
+                        continue
+
                     print(f"Collision detected between {body} and {other_body}")
-                    # normal 방향 검증
                     if normal.dot(body.position - other_body.position) < 0:
-                        normal = -normal  # normal이 잘못된 방향이라면 반전
+                        normal = -normal
 
                     # 상대 속도 계산
                     rel_vel = body.velocity - other_body.velocity
@@ -342,8 +342,8 @@ class PhysicsWorld:
                     if vel_along_normal > 0:
                         continue  # 이미 멀어지는 경우 무시
 
-                    # 충격량(Impulse) 계산
-                    restitution = min(body.restitution, other_body.restitution)  # 반발 계수
+                    # 충격량 계산
+                    restitution = min(body.restitution, other_body.restitution)
                     j = -(1 + restitution) * vel_along_normal
                     j /= (1 / body.mass + 1 / other_body.mass)
 
@@ -355,26 +355,26 @@ class PhysicsWorld:
                     if other_body.mass != inf:
                         other_body.velocity -= impulse / other_body.mass
 
-                    # 최소 위치 보정 (겹침 해소)
-                    position_correction_ratio = 0.8  # 최소 보정 비율
+                    # **회전 토크 적용 (감도 증가)**  
+                    contact_point = (body.position + other_body.position) / 2
+                    r_body = contact_point - body.position
+                    r_other_body = contact_point - other_body.position
+
+                    torque_scale = 2.0  # 회전 감도 스케일 팩터 (값을 조절해서 감도를 높입니다)
+                    if body.mass != inf:
+                        torque_body = r_body.cross(impulse) * torque_scale
+                        body.angular_velocity += torque_body / body.inertia
+                    if other_body.mass != inf:
+                        torque_other = r_other_body.cross(impulse) * torque_scale
+                        other_body.angular_velocity -= torque_other / other_body.inertia
+
+                    # 위치 보정 (겹침 해소)
+                    position_correction_ratio = 0.8
                     position_correction = normal * (depth * position_correction_ratio)
                     if body.mass != inf:
                         body.position += position_correction / 2
                     if other_body.mass != inf:
                         other_body.position -= position_correction / 2
-
-                    # 회전 토크 적용
-                    contact_point = (body.position + other_body.position) / 2
-                    r_body = contact_point - body.position
-                    r_other_body = contact_point - other_body.position
-
-                    torque_body = r_body.cross(impulse)
-                    torque_other = r_other_body.cross(impulse)
-
-                    if body.mass != inf:
-                        body.angular_velocity += torque_body / body.inertia
-                    if other_body.mass != inf:
-                        other_body.angular_velocity -= torque_other / other_body.inertia
 
             tested.append(body)
             body.update(dt)
